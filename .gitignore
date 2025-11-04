@@ -58,3 +58,6 @@ nunit-*.xml
 
 # Test files
 TestFile.cs
+
+# Model
+/model
