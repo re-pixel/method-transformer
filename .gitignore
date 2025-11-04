@@ -52,3 +52,9 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Visual Studio temporary cache files
+.vs/
+
+# Test files
+TestFile.cs
