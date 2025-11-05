@@ -8,7 +8,7 @@ namespace CodeAnalysisTool.NameSuggestion
 {
     public class HeuristicNameSuggester : INameSuggester
     {
-        public string SuggestName(string baseName, string typeName, ISet<string> existingNames)
+        public string SuggestName(string baseName, string context, string typeName, ISet<string> existingNames)
         {
             if (string.IsNullOrWhiteSpace(baseName))
                 baseName = "param";
@@ -34,9 +34,9 @@ namespace CodeAnalysisTool.NameSuggestion
                 suffix++;
             return baseName + "_dup" + suffix;
         }
-        public List<string> SuggestNames(string context, string typeName, ISet<string> existingNames, int count = 1)
+        public List<string> SuggestNames(string originalName, string context, string typeName, ISet<string> existingNames, int count = 1)
         {
-            return new List<string> { SuggestName(context, typeName, existingNames) };
+            return new List<string> { SuggestName(originalName, context, typeName, existingNames) };
         }
     }
 }

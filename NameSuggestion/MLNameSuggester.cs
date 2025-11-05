@@ -15,16 +15,16 @@ namespace CodeAnalysisTool.NameSuggestion
             _embeddingModel = embeddingModel;
         }
 
-        public List<string> SuggestNames(string context, string typeName, ISet<string> existingNames, int count = 1)
+        public List<string> SuggestNames(string originalName, string context, string typeName, ISet<string> existingNames, int count = 1)
         {
             var suggestions = _embeddingModel.GetNameSuggestions(context, typeName, count);
             var filtered = suggestions.Where(name => !existingNames.Contains(name)).Take(count).ToList();
             return filtered;
         }
 
-        public string SuggestName(string context, string typeName, ISet<string> existingNames)
+        public string SuggestName(string originalName, string context, string typeName, ISet<string> existingNames)
         {
-            var suggestions = SuggestNames(context, typeName, existingNames, 1);
+            var suggestions = SuggestNames(originalName, context, typeName, existingNames, 1);
             if (suggestions.Count > 0)
                 return suggestions[0];
             return "param";

@@ -33,8 +33,21 @@ namespace CodeAnalysisTool
             var tree = CSharpSyntaxTree.ParseText(sourceText);
             var root = tree.GetRoot();
 
-            var nameSuggester = new NameSuggestion.HeuristicNameSuggester();
-            var rewriter = new DuplicateSingleParameterRewriter(nameSuggester);
+            var references = new List<MetadataReference>
+            {
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
+            };
+
+            var compilation = CSharpCompilation.Create(
+                "CodeAnalysisAssembly",
+                syntaxTrees: new[] { tree },
+                references: references);
+
+            var semanticModel = compilation.GetSemanticModel(tree);
+
+            var nameSuggester = new HeuristicNameSuggester();
+            var rewriter = new DuplicateSingleParameterRewriter(semanticModel, nameSuggester);
             var newRoot = rewriter.Visit(root);
 
             if (!rewriter.FoundAny)
@@ -62,10 +75,12 @@ namespace CodeAnalysisTool
         public int ChangesCount { get; private set; } = 0;
 
         private readonly INameSuggester _nameSuggester;
+        private readonly SemanticModel _semanticModel;
 
-        public DuplicateSingleParameterRewriter(INameSuggester nameSuggester)
+        public DuplicateSingleParameterRewriter(SemanticModel semanticModel, INameSuggester nameSuggester)
         {
             _nameSuggester = nameSuggester;
+            _semanticModel = semanticModel;
         }
 
         public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node)
@@ -80,10 +95,18 @@ namespace CodeAnalysisTool
 
             var originalParam = parameters[0];
 
+            var typeSymbol = _semanticModel.GetTypeInfo(originalParam.Type!).Type;
+            string typeName = typeSymbol?.ToDisplayString() ?? "object";
+            string docComment = GetDocumentationComment(node);
+            string methodName = node.Identifier.Text;
+
+            string transformerContext = $"Summary: {docComment}\n" +
+                            $"Type: {typeName} in method {methodName}";
+
             var existingNames = parameters.Select(p => p.Identifier.Text).ToHashSet(StringComparer.Ordinal);
 
             Console.WriteLine(originalParam.Identifier.Text);
-            var suggested = _nameSuggester.SuggestName(originalParam.Identifier.Text, originalParam.GetType().ToString(), existingNames);
+            var suggested = _nameSuggester.SuggestName(originalParam.Identifier.Text, transformerContext, typeName, existingNames);
 
             var newParam = originalParam.WithIdentifier(SyntaxFactory.Identifier(suggested)
                                                                     .WithTriviaFrom(originalParam.Identifier));
@@ -93,6 +116,26 @@ namespace CodeAnalysisTool
 
             ChangesCount++;
             return node.WithParameterList(newParamList);
+        }
+
+        private string GetDocumentationComment(MethodDeclarationSyntax node)
+        {
+            var docTrivia = node.GetLeadingTrivia()
+                .Select(i => i.GetStructure())
+                .OfType<DocumentationCommentTriviaSyntax>()
+                .FirstOrDefault();
+
+            if (docTrivia == null)
+                return string.Empty;
+
+            var summaryElement = docTrivia.Content
+                .OfType<XmlElementSyntax>()
+                .FirstOrDefault(i => i.StartTag.Name.ToString().Equals("summary", StringComparison.OrdinalIgnoreCase));
+
+            if (summaryElement == null)
+                return string.Empty;
+
+            return summaryElement.Content.ToFullString().Trim();
         }
     }
 }
