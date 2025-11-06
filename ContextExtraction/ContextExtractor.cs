@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -9,20 +9,18 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace CodeAnalysisTool.EmbeddingCreation
+namespace CodeAnalysisTool.ContextExtraction
 {
-    class ExtractTransformerContexts
+    class ContextExtractor
     {
-        private string _root = @"C:\Users\relja\source\ghrepos";
-        private string _output = "contexts.json";
+        private readonly string _root = @"C:\Users\relja\source\ghrepos";
         private const int BatchSize = 10000;
 
-        public ExtractTransformerContexts() { }
+        public ContextExtractor() { }
 
-        public ExtractTransformerContexts(string rootPath, string outputPath)
+        public ContextExtractor(string rootPath)
         {
             _root = rootPath;
-            _output = outputPath;
         }
 
         public async Task RunExtraction()
@@ -72,14 +70,12 @@ namespace CodeAnalysisTool.EmbeddingCreation
                         }
                     }
                 }
-                catch { /* skip */ }
+                catch {  }
             });
 
-            // Create contexts folder
             string contextsFolder = "contexts";
             Directory.CreateDirectory(contextsFolder);
 
-            // Convert to list and batch
             var resultsList = results.ToList();
             int totalBatches = (int)Math.Ceiling((double)resultsList.Count / BatchSize);
             int batchNumber = 0;
@@ -113,3 +109,4 @@ namespace CodeAnalysisTool.EmbeddingCreation
         }
     }
 }
+

@@ -36,7 +36,7 @@ namespace CodeAnalysisTool.NameSuggestion
         }
         public List<string> SuggestNames(string originalName, string context, string typeName, ISet<string> existingNames, int count = 1)
         {
-            return new List<string> { SuggestName(originalName, context, typeName, existingNames) };
+            return [SuggestName(originalName, context, typeName, existingNames)];
         }
     }
 }
