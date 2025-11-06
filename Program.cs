@@ -193,89 +193,90 @@ namespace CodeAnalysisTool
 
         /// <summary>
         /// Collects all identifier names that exist in the method scope to avoid naming collisions.
+        /// Uses SemanticModel to get all declared symbols, which is more comprehensive and maintainable.
         /// </summary>
         private HashSet<string> CollectAllIdentifiersInMethod(MethodDeclarationSyntax method)
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
 
-            // Add all parameter names
-            foreach (var param in method.ParameterList.Parameters)
-            {
-                names.Add(param.Identifier.Text);
-            }
-
-            if (method.Body == null)
-                return names;
-
-            // Collect all local variable names
-            foreach (var node in method.Body.DescendantNodes())
-            {
-                // Local variable declarations: int x = 5;
-                if (node is VariableDeclaratorSyntax variableDeclarator)
-                {
-                    names.Add(variableDeclarator.Identifier.Text);
-                }
-                // For loop variables: for (int i = 0; ...)
-                else if (node is ForStatementSyntax forStatement)
-                {
-                    foreach (var declaration in forStatement.Declaration?.Variables ?? Enumerable.Empty<VariableDeclaratorSyntax>())
-                    {
-                        names.Add(declaration.Identifier.Text);
-                    }
-                }
-                // Foreach loop variables: foreach (var item in items)
-                else if (node is ForEachStatementSyntax foreachStatement)
-                {
-                    names.Add(foreachStatement.Identifier.Text);
-                }
-                // Catch clause variables: catch (Exception ex)
-                else if (node is CatchDeclarationSyntax catchDeclaration && !catchDeclaration.Identifier.IsKind(SyntaxKind.None))
-                {
-                    names.Add(catchDeclaration.Identifier.Text);
-                }
-                // Using statement variables: using (var stream = ...)
-                else if (node is UsingStatementSyntax usingStatement)
-                {
-                    if (usingStatement.Declaration != null)
-                    {
-                        foreach (var variable in usingStatement.Declaration.Variables)
-                        {
-                            names.Add(variable.Identifier.Text);
-                        }
-                    }
-                }
-            }
-
-            // Also collect lambda parameters and local functions
-            foreach (var node in method.DescendantNodes())
-            {
-                // Lambda parameters: (x, y) => ...
-                if (node is LambdaExpressionSyntax lambda)
-                {
-                    if (lambda is ParenthesizedLambdaExpressionSyntax parenthesizedLambda)
-                    {
-                        foreach (var param in parenthesizedLambda.ParameterList.Parameters)
-                        {
-                            names.Add(param.Identifier.Text);
-                        }
-                    }
-                    else if (lambda is SimpleLambdaExpressionSyntax simpleLambda)
-                    {
-                        names.Add(simpleLambda.Parameter.Identifier.Text);
-                    }
-                }
-                // Local function parameters
-                else if (node is LocalFunctionStatementSyntax localFunction)
-                {
-                    foreach (var param in localFunction.ParameterList.Parameters)
-                    {
-                        names.Add(param.Identifier.Text);
-                    }
-                    names.Add(localFunction.Identifier.Text);
-                }
-            }
+            // Collect all declared symbols in the method using a visitor
+            var collector = new SymbolCollector(_semanticModel);
+            collector.Visit(method);
+            names.UnionWith(collector.DeclaredNames);
 
             return names;
+        }
+
+        /// <summary>
+        /// Visitor that collects all declared symbol names in a method using SemanticModel.
+        /// This is more robust than manually checking syntax types.
+        /// </summary>
+        private class SymbolCollector : CSharpSyntaxWalker
+        {
+            private readonly SemanticModel _semanticModel;
+            public HashSet<string> DeclaredNames { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+            public SymbolCollector(SemanticModel semanticModel)
+            {
+                _semanticModel = semanticModel;
+            }
+
+            public override void VisitParameter(ParameterSyntax node)
+            {
+                AddSymbolName(node);
+                base.VisitParameter(node);
+            }
+
+            public override void VisitVariableDeclarator(VariableDeclaratorSyntax node)
+            {
+                AddSymbolName(node);
+                base.VisitVariableDeclarator(node);
+            }
+
+            public override void VisitForEachStatement(ForEachStatementSyntax node)
+            {
+                AddSymbolName(node);
+                base.VisitForEachStatement(node);
+            }
+
+            public override void VisitCatchDeclaration(CatchDeclarationSyntax node)
+            {
+                if (!node.Identifier.IsKind(SyntaxKind.None))
+                {
+                    AddSymbolName(node);
+                }
+                base.VisitCatchDeclaration(node);
+            }
+
+            public override void VisitLocalFunctionStatement(LocalFunctionStatementSyntax node)
+            {
+                DeclaredNames.Add(node.Identifier.Text);
+                base.VisitLocalFunctionStatement(node);
+            }
+
+            public override void VisitParenthesizedLambdaExpression(ParenthesizedLambdaExpressionSyntax node)
+            {
+                foreach (var param in node.ParameterList.Parameters)
+                {
+                    AddSymbolName(param);
+                }
+                base.VisitParenthesizedLambdaExpression(node);
+            }
+
+            public override void VisitSimpleLambdaExpression(SimpleLambdaExpressionSyntax node)
+            {
+                AddSymbolName(node.Parameter);
+                base.VisitSimpleLambdaExpression(node);
+            }
+
+            private void AddSymbolName(SyntaxNode node)
+            {
+                var symbol = _semanticModel.GetDeclaredSymbol(node);
+                if (symbol != null && !string.IsNullOrEmpty(symbol.Name))
+                {
+                    DeclaredNames.Add(symbol.Name);
+                }
+            }
         }
 
         /// <summary>
