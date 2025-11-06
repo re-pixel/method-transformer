@@ -123,7 +123,7 @@ namespace CodeAnalysisTool
             string transformerContext = $"Method description: {docComment}\n" +
                             $"Type: {typeName} in method {methodName}";
 
-            var existingNames = parameters.Select(p => p.Identifier.Text).ToHashSet(StringComparer.Ordinal);
+            var existingNames = CollectAllIdentifiersInMethod(node);
             Console.WriteLine(string.Join(", ", existingNames));
 
             Console.WriteLine(originalParam.Identifier.Text);
@@ -189,6 +189,93 @@ namespace CodeAnalysisTool
                 return string.Empty;
 
             return summaryElement.Content.ToFullString().Trim();
+        }
+
+        /// <summary>
+        /// Collects all identifier names that exist in the method scope to avoid naming collisions.
+        /// </summary>
+        private HashSet<string> CollectAllIdentifiersInMethod(MethodDeclarationSyntax method)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+
+            // Add all parameter names
+            foreach (var param in method.ParameterList.Parameters)
+            {
+                names.Add(param.Identifier.Text);
+            }
+
+            if (method.Body == null)
+                return names;
+
+            // Collect all local variable names
+            foreach (var node in method.Body.DescendantNodes())
+            {
+                // Local variable declarations: int x = 5;
+                if (node is VariableDeclaratorSyntax variableDeclarator)
+                {
+                    names.Add(variableDeclarator.Identifier.Text);
+                }
+                // For loop variables: for (int i = 0; ...)
+                else if (node is ForStatementSyntax forStatement)
+                {
+                    foreach (var declaration in forStatement.Declaration?.Variables ?? Enumerable.Empty<VariableDeclaratorSyntax>())
+                    {
+                        names.Add(declaration.Identifier.Text);
+                    }
+                }
+                // Foreach loop variables: foreach (var item in items)
+                else if (node is ForEachStatementSyntax foreachStatement)
+                {
+                    names.Add(foreachStatement.Identifier.Text);
+                }
+                // Catch clause variables: catch (Exception ex)
+                else if (node is CatchDeclarationSyntax catchDeclaration && !catchDeclaration.Identifier.IsKind(SyntaxKind.None))
+                {
+                    names.Add(catchDeclaration.Identifier.Text);
+                }
+                // Using statement variables: using (var stream = ...)
+                else if (node is UsingStatementSyntax usingStatement)
+                {
+                    if (usingStatement.Declaration != null)
+                    {
+                        foreach (var variable in usingStatement.Declaration.Variables)
+                        {
+                            names.Add(variable.Identifier.Text);
+                        }
+                    }
+                }
+            }
+
+            // Also collect lambda parameters and local functions
+            foreach (var node in method.DescendantNodes())
+            {
+                // Lambda parameters: (x, y) => ...
+                if (node is LambdaExpressionSyntax lambda)
+                {
+                    if (lambda is ParenthesizedLambdaExpressionSyntax parenthesizedLambda)
+                    {
+                        foreach (var param in parenthesizedLambda.ParameterList.Parameters)
+                        {
+                            names.Add(param.Identifier.Text);
+                        }
+                    }
+                    else if (lambda is SimpleLambdaExpressionSyntax simpleLambda)
+                    {
+                        names.Add(simpleLambda.Parameter.Identifier.Text);
+                    }
+                }
+                // Local function parameters
+                else if (node is LocalFunctionStatementSyntax localFunction)
+                {
+                    foreach (var param in localFunction.ParameterList.Parameters)
+                    {
+                        names.Add(param.Identifier.Text);
+                    }
+                    names.Add(localFunction.Identifier.Text);
+                }
+            }
+
+            return names;
         }
 
         /// <summary>
