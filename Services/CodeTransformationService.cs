@@ -31,27 +31,20 @@ namespace CodeAnalysisTool.Services
 
         public ParameterDuplicationResult TransformFile(FileProcessingOptions options)
         {
-            // Read source file
             string sourceText = _fileService.ReadAllText(options.InputPath);
 
-            // Create semantic model
             var semanticModel = _compilationService.CreateSemanticModel(sourceText);
 
-            // Get syntax tree from semantic model (already parsed)
             var tree = semanticModel.SyntaxTree;
             var root = tree.GetRoot();
 
-            // Apply rewriter
             var rewriter = new DuplicateSingleParameterRewriter(semanticModel, _nameSuggester, _methodAnalysisService);
             var newRoot = rewriter.Visit(root);
 
-            // Format and get result
             var formatted = newRoot.NormalizeWhitespace(elasticTrivia: true).ToFullString();
 
-            // Determine output path
             string outputPath = options.OutputPath ?? (options.OverwriteInput ? options.InputPath : options.InputPath);
 
-            // Write output
             _fileService.WriteAllText(outputPath, formatted);
 
             return new ParameterDuplicationResult

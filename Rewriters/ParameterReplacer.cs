@@ -22,14 +22,11 @@ namespace CodeAnalysisTool.Rewriters
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
         {
-            // Check if this identifier matches the original parameter name
             if (node.Identifier.Text == _originalName)
             {
-                // Verify it's actually the parameter (not a local variable)
                 var symbolInfo = _semanticModel.GetSymbolInfo(node);
                 if (symbolInfo.Symbol is IParameterSymbol paramSymbol)
                 {
-                    // Replace with new parameter name
                     return SyntaxFactory.IdentifierName(_newName)
                         .WithTriviaFrom(node);
                 }

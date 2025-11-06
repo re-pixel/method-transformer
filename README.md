@@ -77,9 +77,9 @@ dotnet restore
 
 3. Configure environment variables:
    Create a `.env` file in the project root:
-   ```
-   PINECONE_API_KEY=your_pinecone_api_key_here
-   ```
+```
+PINECONE_API_KEY=your_pinecone_api_key_here
+```
 
 4. Ensure the embedding model is present:
    - Install `model.onnx`, `tokenizer.json`, and `vocab.txt` from https://huggingface.co/onnx-models/all-MiniLM-L6-v2-onnx/tree/main and place them in the `model/` directory
