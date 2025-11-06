@@ -12,7 +12,6 @@ namespace CodeAnalysisTool.Infrastructure
 
         public ConfigurationService()
         {
-            // Load environment variables from .env file
             Env.Load();
             _pineconeApiKey = Environment.GetEnvironmentVariable("PINECONE_API_KEY");
         }

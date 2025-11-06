@@ -63,24 +63,19 @@ namespace CodeAnalysisTool.Rewriters
             var newParamList = node.ParameterList.WithParameters(newParams);
             var updatedNode = node.WithParameterList(newParamList);
 
-            // Find the first usage of the original parameter and copy it with the new parameter
             var parameterSymbol = _semanticModel.GetDeclaredSymbol(originalParam) as IParameterSymbol;
             if (parameterSymbol != null && node.Body != null)
             {
-                // Find usage in the original node (before parameter list update)
                 var firstUsage = FindFirstParameterUsage(node, originalParam.Identifier.Text, parameterSymbol);
                 if (firstUsage != null && updatedNode.Body != null && node.Body != null)
                 {
-                    // Find the index of the statement in the original body
                     var originalStatements = node.Body.Statements;
                     var statementIndex = originalStatements.IndexOf(firstUsage);
 
                     if (statementIndex >= 0)
                     {
-                        // Clone the statement with the new parameter name
                         var clonedStatement = CloneStatementWithNewParameter(firstUsage, originalParam.Identifier.Text, suggested);
 
-                        // Insert the cloned statement right after the original in the updated body
                         var updatedStatements = updatedNode.Body.Statements;
                         var newStatements = updatedStatements.Insert(statementIndex + 1, clonedStatement);
                         var newBody = updatedNode.Body.WithStatements(newStatements);
@@ -101,20 +96,16 @@ namespace CodeAnalysisTool.Rewriters
             if (method.Body == null)
                 return null;
 
-            // Traverse all descendant nodes to find identifier usages
             foreach (var node in method.Body.DescendantNodes())
             {
                 if (node is IdentifierNameSyntax identifierName)
                 {
-                    // Check if the identifier matches the parameter name
                     if (identifierName.Identifier.Text == parameterName)
                     {
-                        // Use semantic model to verify this refers to the parameter (not a local variable)
                         var symbolInfo = _semanticModel.GetSymbolInfo(identifierName);
                         if (symbolInfo.Symbol != null &&
                             symbolInfo.Symbol.Equals(parameterSymbol, SymbolEqualityComparer.Default))
                         {
-                            // Find the containing statement
                             var statement = identifierName.FirstAncestorOrSelf<StatementSyntax>();
                             return statement;
                         }
@@ -130,7 +121,6 @@ namespace CodeAnalysisTool.Rewriters
         /// </summary>
         private StatementSyntax CloneStatementWithNewParameter(StatementSyntax statement, string originalParamName, string newParamName)
         {
-            // Create a rewriter to replace the parameter identifier
             var rewriter = new ParameterReplacer(originalParamName, newParamName, _semanticModel);
             return (StatementSyntax)rewriter.Visit(statement);
         }

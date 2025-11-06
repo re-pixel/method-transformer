@@ -45,24 +45,17 @@ namespace CodeAnalysisTool.NameSuggestion
        /// <param name="contextsDirectory">The directory containing your "contexts*.json" files.</param>
        public async Task PopulateVectorBaseAsync(string contextsDirectory)
        {
-           // 0. Validate directory exists
            if (!Directory.Exists(contextsDirectory))
            {
                Console.WriteLine($"Error: Directory '{contextsDirectory}' does not exist.");
                return;
            }
 
-           // 1. Get a reference to the index
            var index = _pineconeClient.Index(_indexName);
-
-           // 2. Check if the index is already populated (using the index stats)
-           // Note: Skipping stats check for now - will always populate if called
-           // You can manually check Pinecone dashboard or implement stats check if needed
 
            Console.WriteLine($"Populating Pinecone index '{_indexName}'...");
 
-           // 3. Find and read all context files
-           var contextFiles = Directory.EnumerateFiles(contextsDirectory, "contexts_?.json", SearchOption.TopDirectoryOnly)
+           var contextFiles = Directory.EnumerateFiles(contextsDirectory, "contexts*.json", SearchOption.TopDirectoryOnly)
                .OrderBy(f => f)
                .ToList();
 
@@ -108,7 +101,6 @@ namespace CodeAnalysisTool.NameSuggestion
 
            Console.WriteLine($"Total records loaded: {allRecords.Count}. Generating embeddings and preparing vectors...");
 
-           // 4. Prepare vectors for Pinecone Upsert
            var vectorsToUpsert = new List<Vector>();
            int processedCount = 0;
            int skippedCount = 0;
@@ -123,19 +115,17 @@ namespace CodeAnalysisTool.NameSuggestion
 
                try
                {
-                   // Embed the transformer context
                    float[] embedding = EmbedText(record.transformerContext);
 
-                   // Create metadata map for filtering
                    var metadata = new Metadata
                    {
-                       ["paramType"] = record.paramType ?? string.Empty, // Used for filtering/grouping
-                       ["paramName"] = record.paramName ?? string.Empty  // Saved to retrieve as a suggestion
+                       ["paramType"] = record.paramType ?? string.Empty,
+                       ["paramName"] = record.paramName ?? string.Empty
                    };
 
                    vectorsToUpsert.Add(new Vector
                    {
-                       Id = Guid.NewGuid().ToString(), // Pinecone requires a unique string ID
+                       Id = Guid.NewGuid().ToString(),
                        Values = new ReadOnlyMemory<float>(embedding),
                        Metadata = metadata
                    });
@@ -166,7 +156,6 @@ namespace CodeAnalysisTool.NameSuggestion
 
            Console.WriteLine($"Prepared {vectorsToUpsert.Count} vectors. Upserting to Pinecone in batches...");
 
-           // 5. Upsert to Pinecone in batches (Pinecone limit is typically 100 vectors per upsert)
            const int batchSize = 100;
            int totalBatches = (int)Math.Ceiling((double)vectorsToUpsert.Count / batchSize);
            int batchNumber = 0;
@@ -177,7 +166,7 @@ namespace CodeAnalysisTool.NameSuggestion
                var upsertRequest = new UpsertRequest
                {
                    Vectors = batch,
-                   Namespace = NamespaceName // Use a dedicated namespace
+                   Namespace = NamespaceName
                };
 
                try
@@ -202,28 +191,24 @@ namespace CodeAnalysisTool.NameSuggestion
        {
            var index = _pineconeClient.Index(_indexName);
 
-           // 1. Embed the query context
            float[] contextVec = EmbedText(context);
 
-           // 2. Create the metadata filter for the 'paramType'
            var whereFilter = new Metadata
            {
                ["paramType"] = type
            };
 
-           // 3. Query Pinecone
            var queryRequest = new QueryRequest
            {
                Vector = new ReadOnlyMemory<float>(contextVec),
                TopK = (uint)count,
                Namespace = NamespaceName,
-               IncludeMetadata = true, // Essential to get the 'paramName' back
+               IncludeMetadata = true,
                Filter = whereFilter
            };
 
            var queryResponse = await index.QueryAsync(queryRequest);
 
-           // 4. Extract suggested names from the metadata
            if (queryResponse?.Matches == null)
            {
                return new List<string>();
@@ -239,7 +224,7 @@ namespace CodeAnalysisTool.NameSuggestion
                    return value?.ToString() ?? string.Empty;
                })
                .Where(name => !string.IsNullOrEmpty(name))
-               .Distinct() // Ensure unique suggestions
+               .Distinct()
                .ToList();
        }
 

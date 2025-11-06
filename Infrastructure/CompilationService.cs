@@ -18,7 +18,7 @@ namespace CodeAnalysisTool.Infrastructure
 
             var compilation = CSharpCompilation.Create(
                 assemblyName,
-                syntaxTrees: new[] { tree },
+                syntaxTrees: [tree],
                 references: references);
 
             return compilation.GetSemanticModel(tree);
@@ -26,11 +26,11 @@ namespace CodeAnalysisTool.Infrastructure
 
         public IEnumerable<MetadataReference> GetDefaultReferences()
         {
-            return new List<MetadataReference>
-            {
+            return
+            [
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
-            };
+            ];
         }
     }
 }
