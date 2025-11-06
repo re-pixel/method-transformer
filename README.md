@@ -1,4 +1,4 @@
-# Code Analysis Tool
+# Method Transformer
 
 A C# code transformation tool that automatically duplicates single-parameter method declarations and generates intelligent parameter names using machine learning-powered semantic analysis and vector similarity search.
 
