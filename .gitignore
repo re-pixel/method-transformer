@@ -58,3 +58,14 @@ nunit-*.xml
 
 # Test files
 TestFile.cs
+
+# Model
+/model
+
+# Context and embeddings files
+/contexts
+embeddings.json
+/candidates
+
+# Environment variables
+.env

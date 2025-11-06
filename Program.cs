@@ -1,7 +1,5 @@
 ﻿using System;
 using System.IO;
-using System.Linq;
-using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -25,7 +23,7 @@ namespace SyntaxTreeManualTraversal
                 return 2;
             }
 
-            string outputPath = args.Length >= 2 ? args[1] : inputPath; // overwrite by default
+            string outputPath = args.Length >= 2 ? args[1] : inputPath; 
 
             string sourceText = File.ReadAllText(inputPath);
 
@@ -61,7 +59,6 @@ namespace SyntaxTreeManualTraversal
 
         public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node)
         {
-            // visit children first (so nested methods or local functions are processed separately if needed)
             node = (MethodDeclarationSyntax)base.VisitMethodDeclaration(node)!;
 
             var parameters = node.ParameterList.Parameters;
@@ -72,9 +69,7 @@ namespace SyntaxTreeManualTraversal
 
             var originalParam = parameters[0];
 
-            var existingNames = parameters.Select(p => p.Identifier.Text).ToHashSet(StringComparer.Ordinal);
-
-            var suggested = SuggestNewParameterName(originalParam.Identifier.Text, existingNames);
+            var suggested = SuggestNewParameterName(originalParam.Identifier.Text);
 
             var newParam = originalParam.WithIdentifier(SyntaxFactory.Identifier(suggested)
                                                                     .WithTriviaFrom(originalParam.Identifier));
@@ -89,35 +84,13 @@ namespace SyntaxTreeManualTraversal
 
         /// <summary>
         /// Suggests a new name for a duplicated parameter based on an existing name.
-        /// Strategy:
-        ///  - Try "<name>2", "<name>Copy", "<name>_copy", "<name>New", "<name>_1", ...
-        ///  - Ensure there is no collision with 'existingNames'.
         /// </summary>
-        private static string SuggestNewParameterName(string baseName, ISet<string> existingNames)
+        private static string SuggestNewParameterName(string baseName)
         {
             if (string.IsNullOrWhiteSpace(baseName))
                 baseName = "param";
 
-            string candidate;
-            candidate = baseName + "2";
-            if (!existingNames.Contains(candidate)) return candidate;
-
-            candidate = baseName + "Copy";
-            if (!existingNames.Contains(candidate)) return candidate;
-
-            candidate = baseName + "_copy";
-            if (!existingNames.Contains(candidate)) return candidate;
-
-            for (int i = 1; i < 1000; i++)
-            {
-                candidate = baseName + "_" + i.ToString();
-                if (!existingNames.Contains(candidate)) return candidate;
-            }
-
-            int suffix = 1;
-            while (existingNames.Contains(baseName + "_dup" + suffix))
-                suffix++;
-            return baseName + "_dup" + suffix;
+            return baseName + "2";
         }
     }
 }
