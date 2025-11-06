@@ -6,28 +6,29 @@ using System.Threading.Tasks;
 
 namespace CodeAnalysisTool.NameSuggestion
 {
-    internal class MLNameSuggester : INameSuggester
-    {
-        private readonly LocalEmbeddingSuggester _embeddingModel;
+   internal class MLNameSuggester : INameSuggester
+   {
+       private readonly LocalEmbeddingSuggester _embeddingModel;
 
-        public MLNameSuggester(LocalEmbeddingSuggester embeddingModel)
-        {
-            _embeddingModel = embeddingModel;
-        }
+       public MLNameSuggester(LocalEmbeddingSuggester embeddingModel)
+       {
+           _embeddingModel = embeddingModel;
+       }
 
-        public List<string> SuggestNames(string originalName, string context, string typeName, ISet<string> existingNames, int count = 1)
-        {
-            var suggestions = _embeddingModel.GetNameSuggestions(context, typeName, count);
-            var filtered = suggestions.Where(name => !existingNames.Contains(name)).Take(count).ToList();
+       public List<string> SuggestNames(string originalName, string context, string typeName, ISet<string> existingNames, int count = 5)
+       {
+           var suggestions = _embeddingModel.GetNameSuggestions(context, typeName, count).Result;
+           var filtered = suggestions.Where(name => !existingNames.Contains(name)).Take(count).ToList();
+           Console.WriteLine($"[MLNameSuggester] Suggested names: {string.Join(", ", filtered)}");
             return filtered;
-        }
+       }
 
-        public string SuggestName(string originalName, string context, string typeName, ISet<string> existingNames)
-        {
+       public string SuggestName(string originalName, string context, string typeName, ISet<string> existingNames)
+       {
             var suggestions = SuggestNames(originalName, context, typeName, existingNames, 1);
-            if (suggestions.Count > 0)
-                return suggestions[0];
-            return "param";
-        }
-    }
+           if (suggestions.Count > 0)
+               return suggestions[0];
+           return "param";
+       }
+   }
 }

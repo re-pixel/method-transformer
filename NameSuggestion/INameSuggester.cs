@@ -19,7 +19,7 @@ namespace CodeAnalysisTool.NameSuggestion
         /// <param name="typeName">The data type of the parameter or variable.</param>
         /// <param name="count">Number of name suggestions to return. Default is 1.</param>
         /// <returns>A list of suggested names, sorted by relevance (best first).</returns>
-        List<string> SuggestNames(string context, string typeName, ISet<string> existingNames, int count = 1);
-        string SuggestName(string context, string typeName, ISet<string> existingNames);
+        List<string> SuggestNames(string originalName, string context, string typeName, ISet<string> existingNames, int count = 5);
+        string SuggestName(string originalName, string context, string typeName, ISet<string> existingNames);
     }
 }

@@ -13,6 +13,14 @@ namespace CodeAnalysisTool
     {
         static int Main(string[] args)
         {
+            // var embeddingExtractor = new ExtractTransformerContexts();
+            // embeddingExtractor.RunExtraction().Wait();
+
+            var embeddingSuggester = new LocalEmbeddingSuggester("model/model.onnx", "pcsk_43jLyU_7fsqgATj5VXCymQVgZ2Yb7WR4v3YNLac2eoGMVqgsVL6mqYyFQwd6d6WYUyw4Ut", "code-contexts");
+            //embeddingSuggester.PopulateVectorBaseAsync("contexts").Wait();
+            var mlNameSuggester = new MLNameSuggester(embeddingSuggester);
+
+
             if (args.Length == 0)
             {
                 Console.WriteLine("Usage: SyntaxTreeManualTraversal <input-file.cs> [output-file.cs]");
@@ -46,8 +54,8 @@ namespace CodeAnalysisTool
 
             var semanticModel = compilation.GetSemanticModel(tree);
 
-            var nameSuggester = new HeuristicNameSuggester();
-            var rewriter = new DuplicateSingleParameterRewriter(semanticModel, nameSuggester);
+            var heuristicNameSuggester = new HeuristicNameSuggester();
+            var rewriter = new DuplicateSingleParameterRewriter(semanticModel, mlNameSuggester);
             var newRoot = rewriter.Visit(root);
 
             if (!rewriter.FoundAny)
@@ -100,16 +108,29 @@ namespace CodeAnalysisTool
             string docComment = GetDocumentationComment(node);
             string methodName = node.Identifier.Text;
 
-            string transformerContext = $"Summary: {docComment}\n" +
+            string transformerContext = $"Method description: {docComment}\n" +
                             $"Type: {typeName} in method {methodName}";
 
             var existingNames = parameters.Select(p => p.Identifier.Text).ToHashSet(StringComparer.Ordinal);
 
             Console.WriteLine(originalParam.Identifier.Text);
             var suggested = _nameSuggester.SuggestName(originalParam.Identifier.Text, transformerContext, typeName, existingNames);
+            Console.WriteLine(existingNames.ToList()[0]);
+            
 
-            var newParam = originalParam.WithIdentifier(SyntaxFactory.Identifier(suggested)
-                                                                    .WithTriviaFrom(originalParam.Identifier));
+            if (!string.IsNullOrWhiteSpace(suggested))
+            {
+                suggested = suggested.Trim().Trim('"', '\'', '`');
+            }
+            
+            if (string.IsNullOrWhiteSpace(suggested) || !SyntaxFacts.IsValidIdentifier(suggested))
+            {
+                suggested = "param";
+            }
+
+            
+            var newIdentifier = SyntaxFactory.Identifier(suggested);
+            var newParam = originalParam.WithIdentifier(newIdentifier.WithTriviaFrom(originalParam.Identifier));
             var newParams = parameters.Add(newParam);
 
             var newParamList = node.ParameterList.WithParameters(newParams);

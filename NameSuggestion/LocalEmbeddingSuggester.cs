@@ -1,66 +1,253 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.ML.OnnxRuntime;
-using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Text.Json;
-using System.Numerics;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using AllMiniLmL6V2Sharp;
+using Pinecone;
 
 namespace CodeAnalysisTool.NameSuggestion
 {
-    internal class LocalEmbeddingSuggester : IDisposable
-    {
-        private readonly AllMiniLmL6V2Embedder _embedder;
-        private readonly Dictionary<string, float[]> _nameEmbeddings = new();
+   /// <summary>
+   /// Helper class for deserializing context records from the JSON files.
+   /// </summary>
+   internal class JsonContextRecord
+   {
+       public string? transformerContext { get; set; }
+       public string? paramType { get; set; }
+       public string? paramName { get; set; }
+   }
 
-        public LocalEmbeddingSuggester(string modelPath, string candidatesPath)
-        {
-            _embedder = new AllMiniLmL6V2Embedder(modelPath: modelPath);
+   internal class LocalEmbeddingSuggester : IDisposable
+   {
+       private readonly AllMiniLmL6V2Embedder _embedder;
+       private readonly PineconeClient _pineconeClient;
+       private readonly string _indexName;
+       private const string NamespaceName = "code-contexts"; // Pinecone namespace for grouping
 
-            var json = File.ReadAllText(candidatesPath);
-            var candidates = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json);
+       /// <summary>
+       /// Initializes the suggester and its embedding model.
+       /// </summary>
+       /// <param name="modelPath">Path to the ONNX embedding model.</param>
+       /// <param name="pineconeApiKey">Your Pinecone API Key.</param>
+       /// <param name="indexName">The name of the Pinecone index to use.</param>
+       public LocalEmbeddingSuggester(string modelPath, string pineconeApiKey, string indexName)
+       {
+           _embedder = new AllMiniLmL6V2Embedder(modelPath: modelPath);
+           _pineconeClient = new PineconeClient(pineconeApiKey);
+           _indexName = indexName;
+       }
 
-            foreach (var typeGroup in candidates)
-            {
-                foreach (var name in typeGroup.Value)
-                {
-                    _nameEmbeddings[name] = EmbedText(name);
-                }
-            }
-        }
+       /// <summary>
+       /// Checks if the Pinecone index is populated and loads data if it is not.
+       /// </summary>
+       /// <param name="contextsDirectory">The directory containing your "contexts*.json" files.</param>
+       public async Task PopulateVectorBaseAsync(string contextsDirectory)
+       {
+           // 0. Validate directory exists
+           if (!Directory.Exists(contextsDirectory))
+           {
+               Console.WriteLine($"Error: Directory '{contextsDirectory}' does not exist.");
+               return;
+           }
 
-        public List<string> GetNameSuggestions(string context, string type, int count)
-        {
-            var contextVec = EmbedText(context);
-            var best = _nameEmbeddings
-                .OrderByDescending(kv => CosineSimilarity(contextVec, kv.Value))
-                .Take(count)
-                .Select(kv => kv.Key)
-                .ToList();
+           // 1. Get a reference to the index
+           var index = _pineconeClient.Index(_indexName);
 
-            return best;
-        }
+           // 2. Check if the index is already populated (using the index stats)
+           // Note: Skipping stats check for now - will always populate if called
+           // You can manually check Pinecone dashboard or implement stats check if needed
 
-        private float[] EmbedText(string text)
-        {
-            return (float[])_embedder.GenerateEmbedding(text);
-        }
+           Console.WriteLine($"Populating Pinecone index '{_indexName}'...");
 
-        private static float CosineSimilarity(float[] a, float[] b)
-        {
-            float dot = 0, normA = 0, normB = 0;
-            for (int i = 0; i < a.Length; i++)
-            {
-                dot += a[i] * b[i];
-                normA += a[i] * a[i];
-                normB += b[i] * b[i];
-            }
-            return dot / ((float)Math.Sqrt(normA) * (float)Math.Sqrt(normB));
-        }
+           // 3. Find and read all context files
+           var contextFiles = Directory.EnumerateFiles(contextsDirectory, "contexts_?.json", SearchOption.TopDirectoryOnly)
+               .OrderBy(f => f)
+               .ToList();
 
-        public void Dispose() => _embedder.Dispose();
-    }
+           if (!contextFiles.Any())
+           {
+               Console.WriteLine($"No context files found in '{contextsDirectory}' matching pattern 'contexts*.json'.");
+               return;
+           }
+
+           Console.WriteLine($"Found {contextFiles.Count} context file(s) to process.");
+
+           var allRecords = new List<JsonContextRecord>();
+           var jsonOptions = new JsonSerializerOptions
+           {
+               PropertyNameCaseInsensitive = true,
+               AllowTrailingCommas = true
+           };
+
+           foreach (var file in contextFiles)
+           {
+               try
+               {
+                   Console.WriteLine($"Reading {Path.GetFileName(file)}...");
+                   var json = await File.ReadAllTextAsync(file);
+                   var records = JsonSerializer.Deserialize<List<JsonContextRecord>>(json, jsonOptions);
+                   if (records != null)
+                   {
+                       allRecords.AddRange(records);
+                       Console.WriteLine($"  Loaded {records.Count} records from {Path.GetFileName(file)}");
+                   }
+               }
+               catch (Exception ex)
+               {
+                   Console.WriteLine($"Failed to read or deserialize {file}: {ex.Message}");
+               }
+           }
+
+           if (!allRecords.Any())
+           {
+               Console.WriteLine("No context records found to populate. Ensure files start with 'contexts' and are valid JSON.");
+               return;
+           }
+
+           Console.WriteLine($"Total records loaded: {allRecords.Count}. Generating embeddings and preparing vectors...");
+
+           // 4. Prepare vectors for Pinecone Upsert
+           var vectorsToUpsert = new List<Vector>();
+           int processedCount = 0;
+           int skippedCount = 0;
+
+           foreach (var record in allRecords)
+           {
+               if (string.IsNullOrWhiteSpace(record.transformerContext))
+               {
+                   skippedCount++;
+                   continue;
+               }
+
+               try
+               {
+                   // Embed the transformer context
+                   float[] embedding = EmbedText(record.transformerContext);
+
+                   // Create metadata map for filtering
+                   var metadata = new Metadata
+                   {
+                       ["paramType"] = record.paramType ?? string.Empty, // Used for filtering/grouping
+                       ["paramName"] = record.paramName ?? string.Empty  // Saved to retrieve as a suggestion
+                   };
+
+                   vectorsToUpsert.Add(new Vector
+                   {
+                       Id = Guid.NewGuid().ToString(), // Pinecone requires a unique string ID
+                       Values = new ReadOnlyMemory<float>(embedding),
+                       Metadata = metadata
+                   });
+
+                   processedCount++;
+                   if (processedCount % 1000 == 0)
+                   {
+                       Console.WriteLine($"  Processed {processedCount} records...");
+                   }
+               }
+               catch (Exception ex)
+               {
+                   Console.WriteLine($"  Error processing record: {ex.Message}");
+                   skippedCount++;
+               }
+           }
+
+           if (skippedCount > 0)
+           {
+               Console.WriteLine($"Skipped {skippedCount} records due to errors or empty contexts.");
+           }
+
+           if (!vectorsToUpsert.Any())
+           {
+               Console.WriteLine("No valid vectors to upsert.");
+               return;
+           }
+
+           Console.WriteLine($"Prepared {vectorsToUpsert.Count} vectors. Upserting to Pinecone in batches...");
+
+           // 5. Upsert to Pinecone in batches (Pinecone limit is typically 100 vectors per upsert)
+           const int batchSize = 100;
+           int totalBatches = (int)Math.Ceiling((double)vectorsToUpsert.Count / batchSize);
+           int batchNumber = 0;
+
+           for (int i = 0; i < vectorsToUpsert.Count; i += batchSize)
+           {
+               var batch = vectorsToUpsert.Skip(i).Take(batchSize).ToArray();
+               var upsertRequest = new UpsertRequest
+               {
+                   Vectors = batch,
+                   Namespace = NamespaceName // Use a dedicated namespace
+               };
+
+               try
+               {
+                   await index.UpsertAsync(upsertRequest);
+                   batchNumber++;
+                   Console.WriteLine($"  Upserted batch {batchNumber}/{totalBatches} ({batch.Length} vectors)");
+               }
+               catch (Exception ex)
+               {
+                   Console.WriteLine($"  Error upserting batch {batchNumber + 1}: {ex.Message}");
+               }
+           }
+
+           Console.WriteLine($"Successfully added {vectorsToUpsert.Count} embeddings to Pinecone index '{_indexName}' in namespace '{NamespaceName}'.");
+       }
+
+       /// <summary>
+       /// Gets name suggestions by finding similar contexts in Pinecone, filtered by type.
+       /// </summary>
+       public async Task<List<string>> GetNameSuggestions(string context, string type, int count)
+       {
+           var index = _pineconeClient.Index(_indexName);
+
+           // 1. Embed the query context
+           float[] contextVec = EmbedText(context);
+
+           // 2. Create the metadata filter for the 'paramType'
+           var whereFilter = new Metadata
+           {
+               ["paramType"] = type
+           };
+
+           // 3. Query Pinecone
+           var queryRequest = new QueryRequest
+           {
+               Vector = new ReadOnlyMemory<float>(contextVec),
+               TopK = (uint)count,
+               Namespace = NamespaceName,
+               IncludeMetadata = true, // Essential to get the 'paramName' back
+               Filter = whereFilter
+           };
+
+           var queryResponse = await index.QueryAsync(queryRequest);
+
+           // 4. Extract suggested names from the metadata
+           if (queryResponse?.Matches == null)
+           {
+               return new List<string>();
+           }
+
+           return queryResponse.Matches
+               .Where(m => m.Metadata != null && m.Metadata.ContainsKey("paramName"))
+               .Select(m =>
+               {
+                   var metadata = m.Metadata;
+                   if (metadata == null) return string.Empty;
+                   var value = metadata["paramName"];
+                   return value?.ToString() ?? string.Empty;
+               })
+               .Where(name => !string.IsNullOrEmpty(name))
+               .Distinct() // Ensure unique suggestions
+               .ToList();
+       }
+
+       private float[] EmbedText(string text)
+       {
+           return (float[])_embedder.GenerateEmbedding(text);
+       }
+
+       public void Dispose() => _embedder.Dispose();
+   }
 }
