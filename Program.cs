@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using CodeAnalysisTool.NameSuggestion;
+using DotNetEnv;
 
 namespace CodeAnalysisTool
 {
@@ -13,10 +14,21 @@ namespace CodeAnalysisTool
     {
         static int Main(string[] args)
         {
+            // Load environment variables from .env file
+            Env.Load();
+
             // var embeddingExtractor = new ExtractTransformerContexts();
             // embeddingExtractor.RunExtraction().Wait();
 
-            var embeddingSuggester = new LocalEmbeddingSuggester("model/model.onnx", "pcsk_43jLyU_7fsqgATj5VXCymQVgZ2Yb7WR4v3YNLac2eoGMVqgsVL6mqYyFQwd6d6WYUyw4Ut", "code-contexts");
+            // Get Pinecone API key from environment variable
+            var pineconeApiKey = Environment.GetEnvironmentVariable("PINECONE_API_KEY");
+            if (string.IsNullOrEmpty(pineconeApiKey))
+            {
+                Console.Error.WriteLine("Error: PINECONE_API_KEY environment variable is not set. Please create a .env file with PINECONE_API_KEY=your_key");
+                return 1;
+            }
+
+            var embeddingSuggester = new LocalEmbeddingSuggester("model/model.onnx", pineconeApiKey, "code-contexts");
             //embeddingSuggester.PopulateVectorBaseAsync("contexts").Wait();
             var mlNameSuggester = new MLNameSuggester(embeddingSuggester);
 
@@ -115,14 +127,6 @@ namespace CodeAnalysisTool
 
             Console.WriteLine(originalParam.Identifier.Text);
             var suggested = _nameSuggester.SuggestName(originalParam.Identifier.Text, transformerContext, typeName, existingNames);
-            Console.WriteLine(existingNames.ToList()[0]);
-            
-
-            if (!string.IsNullOrWhiteSpace(suggested))
-            {
-                suggested = suggested.Trim().Trim('"', '\'', '`');
-            }
-            
             if (string.IsNullOrWhiteSpace(suggested) || !SyntaxFacts.IsValidIdentifier(suggested))
             {
                 suggested = "param";
