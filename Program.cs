@@ -124,6 +124,7 @@ namespace CodeAnalysisTool
                             $"Type: {typeName} in method {methodName}";
 
             var existingNames = parameters.Select(p => p.Identifier.Text).ToHashSet(StringComparer.Ordinal);
+            Console.WriteLine(string.Join(", ", existingNames));
 
             Console.WriteLine(originalParam.Identifier.Text);
             var suggested = _nameSuggester.SuggestName(originalParam.Identifier.Text, transformerContext, typeName, existingNames);
@@ -138,9 +139,36 @@ namespace CodeAnalysisTool
             var newParams = parameters.Add(newParam);
 
             var newParamList = node.ParameterList.WithParameters(newParams);
+            var updatedNode = node.WithParameterList(newParamList);
+
+            // Find the first usage of the original parameter and copy it with the new parameter
+            var parameterSymbol = _semanticModel.GetDeclaredSymbol(originalParam) as IParameterSymbol;
+            if (parameterSymbol != null && node.Body != null)
+            {
+                // Find usage in the original node (before parameter list update)
+                var firstUsage = FindFirstParameterUsage(node, originalParam.Identifier.Text, parameterSymbol);
+                if (firstUsage != null && updatedNode.Body != null && node.Body != null)
+                {
+                    // Find the index of the statement in the original body
+                    var originalStatements = node.Body.Statements;
+                    var statementIndex = originalStatements.IndexOf(firstUsage);
+                    
+                    if (statementIndex >= 0)
+                    {
+                        // Clone the statement with the new parameter name
+                        var clonedStatement = CloneStatementWithNewParameter(firstUsage, originalParam.Identifier.Text, suggested);
+                        
+                        // Insert the cloned statement right after the original in the updated body
+                        var updatedStatements = updatedNode.Body.Statements;
+                        var newStatements = updatedStatements.Insert(statementIndex + 1, clonedStatement);
+                        var newBody = updatedNode.Body.WithStatements(newStatements);
+                        updatedNode = updatedNode.WithBody(newBody);
+                    }
+                }
+            }
 
             ChangesCount++;
-            return node.WithParameterList(newParamList);
+            return updatedNode;
         }
 
         private string GetDocumentationComment(MethodDeclarationSyntax node)
@@ -161,6 +189,83 @@ namespace CodeAnalysisTool
                 return string.Empty;
 
             return summaryElement.Content.ToFullString().Trim();
+        }
+
+        /// <summary>
+        /// Finds the first statement or expression in the method body where the parameter is used.
+        /// </summary>
+        private StatementSyntax? FindFirstParameterUsage(MethodDeclarationSyntax method, string parameterName, IParameterSymbol parameterSymbol)
+        {
+            if (method.Body == null)
+                return null;
+
+            // Traverse all descendant nodes to find identifier usages
+            foreach (var node in method.Body.DescendantNodes())
+            {
+                if (node is IdentifierNameSyntax identifierName)
+                {
+                    // Check if the identifier matches the parameter name
+                    if (identifierName.Identifier.Text == parameterName)
+                    {
+                        // Use semantic model to verify this refers to the parameter (not a local variable)
+                        var symbolInfo = _semanticModel.GetSymbolInfo(identifierName);
+                        if (symbolInfo.Symbol != null && 
+                            symbolInfo.Symbol.Equals(parameterSymbol, SymbolEqualityComparer.Default))
+                        {
+                            // Find the containing statement
+                            var statement = identifierName.FirstAncestorOrSelf<StatementSyntax>();
+                            return statement;
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Clones a statement and replaces all occurrences of the original parameter name with the new parameter name.
+        /// </summary>
+        private StatementSyntax CloneStatementWithNewParameter(StatementSyntax statement, string originalParamName, string newParamName)
+        {
+            // Create a rewriter to replace the parameter identifier
+            var rewriter = new ParameterReplacer(originalParamName, newParamName, _semanticModel);
+            return (StatementSyntax)rewriter.Visit(statement);
+        }
+
+        /// <summary>
+        /// Helper rewriter to replace parameter identifier references in a syntax tree.
+        /// </summary>
+        private class ParameterReplacer : CSharpSyntaxRewriter
+        {
+            private readonly string _originalName;
+            private readonly string _newName;
+            private readonly SemanticModel _semanticModel;
+
+            public ParameterReplacer(string originalName, string newName, SemanticModel semanticModel)
+            {
+                _originalName = originalName;
+                _newName = newName;
+                _semanticModel = semanticModel;
+            }
+
+            public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
+            {
+                // Check if this identifier matches the original parameter name
+                if (node.Identifier.Text == _originalName)
+                {
+                    // Verify it's actually the parameter (not a local variable)
+                    var symbolInfo = _semanticModel.GetSymbolInfo(node);
+                    if (symbolInfo.Symbol is IParameterSymbol paramSymbol)
+                    {
+                        // Replace with new parameter name
+                        return SyntaxFactory.IdentifierName(_newName)
+                            .WithTriviaFrom(node);
+                    }
+                }
+
+                return base.VisitIdentifierName(node);
+            }
         }
     }
 }
