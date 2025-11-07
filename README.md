@@ -33,22 +33,22 @@ The semantic mode leverages **AllMiniLmL6V2** sentence transformer and **Pinecon
 CodeAnalysisTool/
 ├── Core/
 │   └── Models/
-│       ├── FileProcessingOptions.cs      # Configuration for file processing
-│       └── ParameterDuplicationResult.cs # Result of transformation operations
+│       ├── FileProcessingOptions.cs      
+│       └── ParameterDuplicationResult.cs 
 ├── ContextExtraction/
-│   └── ContextExtractor.cs               # Utility for extracting training data from codebases
+│   └── ContextExtractor.cs              # Utility for extracting training data from codebases
 ├── Infrastructure/
 │   ├── CompilationService.cs            # Roslyn compilation and semantic model creation
-│   ├── ICompilationService.cs           # Compilation service interface
-│   ├── ConfigurationService.cs          # Environment variable and API key management
-│   ├── IConfigurationService.cs         # Configuration service interface
-│   ├── FileService.cs                   # File I/O operations
-│   └── IFileService.cs                  # File service interface
+│   ├── ICompilationService.cs           
+│   ├── ConfigurationService.cs          
+│   ├── IConfigurationService.cs         
+│   ├── FileService.cs                   
+│   └── IFileService.cs                  
 ├── NameSuggestion/
-│   ├── HeuristicNameSuggester.cs        # Heuristic rule-based name suggestion
-│   ├── INameSuggester.cs                # Name suggestion interface
+│   ├── HeuristicNameSuggester.cs        
+│   ├── INameSuggester.cs                
 │   ├── LocalEmbeddingSuggester.cs       # Embedding generation and Pinecone integration
-│   └── MLNameSuggester.cs               # ML-based name suggestion logic
+│   └── MLNameSuggester.cs               
 ├── Rewriters/
 │   ├── DocumentationExtractor.cs        # XML documentation extraction
 │   ├── DuplicateSingleParameterRewriter.cs  # Main code transformation logic
@@ -56,11 +56,11 @@ CodeAnalysisTool/
 │   └── SymbolCollector.cs               # Identifier collection for collision detection
 ├── Services/
 │   ├── CodeTransformationService.cs     # Orchestrates transformation pipeline
-│   ├── ICodeTransformationService.cs    # Transformation service interface
+│   ├── ICodeTransformationService.cs    
 │   ├── MethodAnalysisService.cs         # Method metadata extraction and analysis
-│   └── IMethodAnalysisService.cs        # Method analysis service interface
-├── CodeAnalysisTool.csproj              # Project file
-├── CodeAnalysisTool.sln                 # Solution file
+│   └── IMethodAnalysisService.cs        
+├── CodeAnalysisTool.csproj              
+├── CodeAnalysisTool.sln                 
 └── Program.cs                           # Application entry point
 ```
 
