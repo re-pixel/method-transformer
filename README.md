@@ -171,6 +171,7 @@ class TestClass
     }
 }
 ```
+**Note**: MLNameSuggester recognizes context.
 
 **Input:**
 ```csharp
@@ -188,6 +189,28 @@ public void ProcessData(string name, string name2)
 }
 ```
 
+**Input:**
+```csharp
+public void ProcessData(string name)
+{
+    int name2 = "";
+    foreach(char c in name)
+      Console.WriteLine(c);
+}
+```
+
+**Output:**
+```csharp
+public void ProcessData(string name, string nameCopy)
+{
+    int name2 = "";
+    foreach(char c in name)
+      Console.WriteLine(c);
+    foreach(char c in nameCopy)
+      Console.WriteLine(c);
+}
+```
+**Note**: Program recognizes potential collision if it decides to name the new parameter name2 so it goes for other options.
 
 ### Building Training Data
 
