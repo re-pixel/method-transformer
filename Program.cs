@@ -12,22 +12,33 @@ namespace CodeAnalysisTool
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("Usage: CodeAnalysisTool <input-file.cs> [output-file.cs]");
+                Console.WriteLine("Usage: CodeAnalysisTool <input-file.cs> [output-file.cs] [--suggester=heuristic|semantic]");
+                Console.WriteLine("  --suggester: Choose name suggester (heuristic or semantic). Default: semantic");
                 return 1;
             }
 
             string inputPath = args[0];
-            string? outputPath = args.Length >= 2 ? args[1] : null;
+            string? outputPath = null;
+            string suggesterType = "semantic";
 
-            var configurationService = new ConfigurationService();
-            if (!configurationService.ValidatePineconeApiKey())
+            for (int i = 1; i < args.Length; i++)
             {
-                return 1;
+                if (args[i].StartsWith("--suggester="))
+                {
+                    suggesterType = args[i].Substring("--suggester=".Length).ToLowerInvariant();
+                }
+                else if (!args[i].StartsWith("--"))
+                {
+                    if (outputPath == null)
+                    {
+                        outputPath = args[i];
+                    }
+                }
             }
 
-            var pineconeApiKey = configurationService.GetPineconeApiKey();
-            if (string.IsNullOrEmpty(pineconeApiKey))
+            if (suggesterType != "heuristic" && suggesterType != "semantic")
             {
+                Console.Error.WriteLine($"Error: Invalid suggester type '{suggesterType}'. Use 'heuristic' or 'semantic'.");
                 return 1;
             }
 
@@ -35,8 +46,29 @@ namespace CodeAnalysisTool
             var compilationService = new CompilationService();
             var methodAnalysisService = new MethodAnalysisService();
 
-            var embeddingSuggester = new LocalEmbeddingSuggester("model/model.onnx", pineconeApiKey, "code-contexts");
-            var mlNameSuggester = new MLNameSuggester(embeddingSuggester);
+            INameSuggester nameSuggester;
+
+            if (suggesterType == "semantic")
+            {
+                var configurationService = new ConfigurationService();
+                if (!configurationService.ValidatePineconeApiKey())
+                {
+                    return 1;
+                }
+
+                var pineconeApiKey = configurationService.GetPineconeApiKey();
+                if (string.IsNullOrEmpty(pineconeApiKey))
+                {
+                    return 1;
+                }
+
+                var embeddingSuggester = new LocalEmbeddingSuggester("model/model.onnx", pineconeApiKey, "code-contexts");
+                nameSuggester = new MLNameSuggester(embeddingSuggester);
+            }
+            else
+            {
+                nameSuggester = new HeuristicNameSuggester();
+            }
 
             if (!fileService.FileExists(inputPath))
             {
@@ -47,7 +79,7 @@ namespace CodeAnalysisTool
             var transformationService = new CodeTransformationService(
                 fileService,
                 compilationService,
-                mlNameSuggester,
+                nameSuggester,
                 methodAnalysisService);
 
             var options = new FileProcessingOptions

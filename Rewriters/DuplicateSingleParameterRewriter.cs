@@ -43,9 +43,6 @@ namespace CodeAnalysisTool.Rewriters
 
             string transformerContext = _methodAnalysisService.BuildTransformerContext(node, originalParam, _semanticModel);
             var existingNames = _methodAnalysisService.CollectAllIdentifiersInMethod(node, _semanticModel);
-            
-            Console.WriteLine(string.Join(", ", existingNames));
-            Console.WriteLine(originalParam.Identifier.Text);
 
             var typeSymbol = _semanticModel.GetTypeInfo(originalParam.Type!).Type;
             string typeName = typeSymbol?.ToDisplayString() ?? "object";
