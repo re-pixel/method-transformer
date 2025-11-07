@@ -86,7 +86,8 @@ namespace CodeAnalysisTool.Rewriters
         }
 
         /// <summary>
-        /// Finds the first statement or expression in the method body where the parameter is used.
+        /// Finds the first statement in the method body where the parameter is used that is safe to clone.
+        /// Skips return statements, variable declarations, and variable assignments.
         /// </summary>
         private StatementSyntax? FindFirstParameterUsage(MethodDeclarationSyntax method, string parameterName, IParameterSymbol parameterSymbol)
         {
@@ -104,13 +105,37 @@ namespace CodeAnalysisTool.Rewriters
                             symbolInfo.Symbol.Equals(parameterSymbol, SymbolEqualityComparer.Default))
                         {
                             var statement = identifierName.FirstAncestorOrSelf<StatementSyntax>();
-                            return statement;
+                            if (statement != null && IsSafeToClone(statement))
+                            {
+                                return statement;
+                            }
                         }
                     }
                 }
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Checks if a statement is safe to clone. Returns false for return statements,
+        /// variable declarations, and variable assignments as these can produce errors if duplicated.
+        /// </summary>
+        private bool IsSafeToClone(StatementSyntax statement)
+        {
+            if (statement is ReturnStatementSyntax)
+                return false;
+
+            if (statement is LocalDeclarationStatementSyntax)
+                return false;
+
+            if (statement is ExpressionStatementSyntax expressionStatement)
+            {
+                if (expressionStatement.Expression is AssignmentExpressionSyntax)
+                    return false;
+            }
+
+            return true;
         }
 
         /// <summary>
